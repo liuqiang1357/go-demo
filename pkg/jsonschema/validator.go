@@ -12,7 +12,7 @@ import (
 
 // applyDefaults recursively applies default values from schema to JSON data
 func applyDefaults(data interface{}, schema *jsonschema.Schema, schemaMap map[string]interface{}) interface{} {
-	if schema == nil || schemaMap == nil {
+	if schemaMap == nil {
 		return data
 	}
 
@@ -62,13 +62,19 @@ func applyDefaults(data interface{}, schema *jsonschema.Schema, schemaMap map[st
 				}
 			}
 		} else {
-			// Property exists, but check if it's a nested object that needs defaults applied
+			// Property exists, check if it's a nested object that needs defaults applied
 			if nestedObj, ok := result[propName].(map[string]interface{}); ok {
-				if nestedProps, ok := propMap["properties"].(map[string]interface{}); ok {
+				// Check if this property schema defines it as an object with properties
+				if nestedProps, hasNestedProps := propMap["properties"].(map[string]interface{}); hasNestedProps {
+					// Recursively apply defaults to nested object
 					nestedSchemaMap := map[string]interface{}{
 						"properties": nestedProps,
 					}
-					result[propName] = applyDefaults(nestedObj, nil, nestedSchemaMap)
+					enrichedNested := applyDefaults(nestedObj, nil, nestedSchemaMap)
+					// Only update if we got enriched data back
+					if enrichedMap, ok := enrichedNested.(map[string]interface{}); ok {
+						result[propName] = enrichedMap
+					}
 				}
 			}
 		}
@@ -96,4 +102,3 @@ func ApplyDefaultsFromSchema(data interface{}, schemaStr string) (interface{}, e
 
 	return applyDefaults(data, schema, schemaMap), nil
 }
-
