@@ -41,15 +41,11 @@ go mod download
 #### Run All Tests
 
 ```bash
-# Using go test directly
+# Run all tests
 go test ./...
-
-# Using the main helper
-go run main.go test
 
 # With verbose output
 go test -v ./...
-go run main.go test-verbose
 ```
 
 #### Run Specific Test Packages
@@ -57,11 +53,9 @@ go run main.go test-verbose
 ```bash
 # Test pongo2 only
 go test -v ./pkg/pongo2/...
-go run main.go test-pongo2
 
 # Test jsonschema only
 go test -v ./pkg/jsonschema/...
-go run main.go test-jsonschema
 ```
 
 #### Run Specific Tests
@@ -78,7 +72,6 @@ go test -v ./pkg/jsonschema -run TestDefault
 
 ```
 go-demo/
-├── main.go                      # Helper script for running tests
 ├── go.mod                       # Go module definition
 ├── .gitignore                   # Git ignore rules
 ├── .gitattributes               # Git attributes for line endings
