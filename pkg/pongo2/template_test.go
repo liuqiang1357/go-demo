@@ -1,6 +1,7 @@
 package pongo2
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -30,9 +31,9 @@ func TestJSONGeneration(t *testing.T) {
 	}
 
 	context := pongo2.Context{
-		"name":  "John Doe",
-		"age":   30,
-		"email": "john@example.com",
+		"name":   "John Doe",
+		"age":    30,
+		"email":  "john@example.com",
 		"active": true,
 		"tags":   []string{"golang", "testing", "pongo2"},
 		"metadata": map[string]interface{}{
@@ -63,6 +64,51 @@ func TestJSONGeneration(t *testing.T) {
 	t.Logf("Generated JSON:\n%s", output)
 }
 
+// TestToJSONFilter ensures that the to_json filter correctly escapes
+// strings with quotes and produces valid JSON when used in a template.
+func TestToJSONFilter(t *testing.T) {
+	templateString := `{
+  "name": {{ name|to_json }},
+  "tags": {{ tags|to_json }}
+}`
+
+	tpl, err := pongo2.FromString(templateString)
+	if err != nil {
+		t.Fatalf("Failed to parse template: %v", err)
+	}
+
+	ctx := pongo2.Context{
+		"name": `John "Doe"`,
+		"tags": []string{`tag "1"`, "tag2"},
+	}
+
+	out, err := tpl.Execute(ctx)
+	if err != nil {
+		t.Fatalf("Failed to execute template: %v", err)
+	}
+
+	var decoded struct {
+		Name string   `json:"name"`
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("Rendered output should be valid JSON: %v\nOutput: %s", err, out)
+	}
+
+	if decoded.Name != ctx["name"] {
+		t.Errorf("expected name %q, got %q", ctx["name"], decoded.Name)
+	}
+	wantTags := ctx["tags"].([]string)
+	if len(decoded.Tags) != len(wantTags) {
+		t.Fatalf("expected %d tags, got %d", len(wantTags), len(decoded.Tags))
+	}
+	for i, tag := range decoded.Tags {
+		if tag != wantTags[i] {
+			t.Errorf("expected tag[%d]=%q, got %q", i, wantTags[i], tag)
+		}
+	}
+}
+
 func TestXMLGeneration(t *testing.T) {
 	templateString := `<?xml version="1.0" encoding="UTF-8"?>
 <user>
@@ -87,9 +133,9 @@ func TestXMLGeneration(t *testing.T) {
 	}
 
 	context := pongo2.Context{
-		"name":  "Jane Smith",
-		"age":   28,
-		"email": "jane@example.com",
+		"name":   "Jane Smith",
+		"age":    28,
+		"email":  "jane@example.com",
 		"active": true,
 		"tags":   []string{"xml", "template", "generation"},
 		"metadata": map[string]interface{}{
@@ -172,7 +218,7 @@ func TestMarkdownGeneration(t *testing.T) {
 		"code_language": "go",
 		"code_example": `template := pongo2.Must(pongo2.FromString("Hello {{ name }}!"))
 output := template.Execute(pongo2.Context{"name": "World"})`,
-		"tags":        []string{"golang", "template", "pongo2"},
+		"tags":         []string{"golang", "template", "pongo2"},
 		"generated_at": "2024-01-15T10:30:00Z",
 	}
 
@@ -200,4 +246,3 @@ output := template.Execute(pongo2.Context{"name": "World"})`,
 
 	t.Logf("Generated Markdown:\n%s", output)
 }
-
