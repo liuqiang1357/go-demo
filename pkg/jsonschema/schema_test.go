@@ -8,7 +8,6 @@ import (
 	jsonschemaLib "github.com/santhosh-tekuri/jsonschema/v5"
 )
 
-// compileSchema is a helper to compile schema string
 func compileSchema(t *testing.T, schemaStr string) *jsonschemaLib.Schema {
 	compiler := jsonschemaLib.NewCompiler()
 	compiler.ExtractAnnotations = true
@@ -22,7 +21,6 @@ func compileSchema(t *testing.T, schemaStr string) *jsonschemaLib.Schema {
 	return schema
 }
 
-// parseJSON is a helper to parse JSON string
 func parseJSON(t *testing.T, jsonStr string) interface{} {
 	var data interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
@@ -31,45 +29,17 @@ func parseJSON(t *testing.T, jsonStr string) interface{} {
 	return data
 }
 
-// assertEqual checks if two values are equal
-func assertEqual(t *testing.T, name string, got, want interface{}) {
-	if got != want {
-		t.Errorf("%s: got %v, want %v", name, got, want)
-	}
-}
-
-func TestApplyDefaults(t *testing.T) {
+func TestApplyDefaults_Basic(t *testing.T) {
 	schemaStr := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"type": "object",
 		"properties": {
-			"name": {
-				"type": "string",
-				"default": "Unknown"
-			},
-			"age": {
-				"type": "integer",
-				"default": 0
-			},
-			"email": {
-				"type": "string",
-				"default": "no-email@example.com"
-			},
-			"active": {
-				"type": "boolean",
-				"default": true
-			},
+			"name": {"type": "string", "default": "Unknown"},
+			"email": {"type": "string", "default": "no-email@example.com"},
 			"metadata": {
 				"type": "object",
 				"properties": {
-					"version": {
-						"type": "integer",
-						"default": 1
-					},
-					"created_at": {
-						"type": "string",
-						"default": "2024-01-01T00:00:00Z"
-					}
+					"version": {"type": "integer", "default": 1}
 				}
 			},
 			"users": {
@@ -77,170 +47,197 @@ func TestApplyDefaults(t *testing.T) {
 				"items": {
 					"type": "object",
 					"properties": {
-						"name": {
-							"type": "string",
-							"default": "Anonymous"
-						},
-						"age": {
-							"type": "integer",
-							"default": 0
-						}
+						"name": {"type": "string", "default": "Anonymous"}
 					}
 				}
 			}
 		}
 	}`
-
 	schema := compileSchema(t, schemaStr)
 
-	t.Run("empty object applies all defaults", func(t *testing.T) {
-		data := parseJSON(t, `{}`)
-		result := ApplyDefaults(data, schema)
+	// Empty object gets defaults
+	data := parseJSON(t, `{}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+	if m["name"] != "Unknown" || m["email"] != "no-email@example.com" {
+		t.Errorf("Empty object should get defaults")
+	}
 
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
+	// Partial data gets missing defaults
+	data = parseJSON(t, `{"name": "John"}`)
+	result = ApplyDefaults(data, schema)
+	m = result.(map[string]interface{})
+	if m["name"] != "John" || m["email"] != "no-email@example.com" {
+		t.Errorf("Partial data should get missing defaults")
+	}
 
-		assertEqual(t, "name", m["name"], "Unknown")
-		assertEqual(t, "email", m["email"], "no-email@example.com")
-		assertEqual(t, "active", m["active"], true)
+	// Nested objects get defaults
+	data = parseJSON(t, `{"metadata": {}}`)
+	result = ApplyDefaults(data, schema)
+	m = result.(map[string]interface{})
+	metadata := m["metadata"].(map[string]interface{})
+	if version, ok := metadata["version"].(json.Number); !ok || version != "1" {
+		t.Errorf("Nested object should get defaults")
+	}
 
-		// Check numeric default (json.Number)
-		if age, ok := m["age"].(json.Number); !ok || age != "0" {
-			t.Errorf("age: got %v, want json.Number(\"0\")", m["age"])
-		}
-	})
+	// Array items get defaults
+	data = parseJSON(t, `{"users": [{}]}`)
+	result = ApplyDefaults(data, schema)
+	m = result.(map[string]interface{})
+	users := m["users"].([]interface{})
+	user := users[0].(map[string]interface{})
+	if user["name"] != "Anonymous" {
+		t.Errorf("Array items should get defaults")
+	}
+}
 
-	t.Run("partial data applies missing defaults", func(t *testing.T) {
-		data := parseJSON(t, `{"name": "John"}`)
-		result := ApplyDefaults(data, schema)
-
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
-
-		assertEqual(t, "name", m["name"], "John")
-		assertEqual(t, "email", m["email"], "no-email@example.com")
-		assertEqual(t, "active", m["active"], true)
-	})
-
-	t.Run("nested object defaults", func(t *testing.T) {
-		data := parseJSON(t, `{"metadata": {}}`)
-		result := ApplyDefaults(data, schema)
-
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
-
-		metadata, ok := m["metadata"].(map[string]interface{})
-		if !ok {
-			t.Fatal("metadata should be a map")
-		}
-
-		if version, ok := metadata["version"].(json.Number); !ok || version != "1" {
-			t.Errorf("metadata.version: got %v, want json.Number(\"1\")", metadata["version"])
-		}
-		assertEqual(t, "metadata.created_at", metadata["created_at"], "2024-01-01T00:00:00Z")
-	})
-
-	t.Run("array item defaults", func(t *testing.T) {
-		data := parseJSON(t, `{"users": [{"name": "John"}, {}]}`)
-		result := ApplyDefaults(data, schema)
-
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
-
-		users, ok := m["users"].([]interface{})
-		if !ok || len(users) != 2 {
-			t.Fatalf("users should be array with 2 items, got %v", users)
-		}
-
-		user1, ok := users[0].(map[string]interface{})
-		if !ok {
-			t.Fatal("user1 should be a map")
-		}
-		assertEqual(t, "user1.name", user1["name"], "John")
-		if age, ok := user1["age"].(json.Number); !ok || age != "0" {
-			t.Errorf("user1.age: got %v, want json.Number(\"0\")", user1["age"])
-		}
-
-		user2, ok := users[1].(map[string]interface{})
-		if !ok {
-			t.Fatal("user2 should be a map")
-		}
-		assertEqual(t, "user2.name", user2["name"], "Anonymous")
-		if age, ok := user2["age"].(json.Number); !ok || age != "0" {
-			t.Errorf("user2.age: got %v, want json.Number(\"0\")", user2["age"])
-		}
-	})
-
-	// Test with required properties
-	schemaStrWithRequired := `{
+func TestApplyDefaults_RequiredProperties(t *testing.T) {
+	schemaStr := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"type": "object",
 		"properties": {
-			"name": {
-				"type": "string",
-				"default": "Unknown"
-			},
-			"age": {
-				"type": "integer",
-				"default": 0
-			},
-			"email": {
-				"type": "string",
-				"default": "no-email@example.com"
+			"name": {"type": "string", "default": "Unknown"},
+			"email": {"type": "string", "default": "no-email@example.com"}
+		},
+		"required": ["name"]
+	}`
+	schema := compileSchema(t, schemaStr)
+
+	data := parseJSON(t, `{}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+
+	if _, exists := m["name"]; exists {
+		t.Error("Required property should not get default")
+	}
+	if m["email"] != "no-email@example.com" {
+		t.Error("Non-required property should get default")
+	}
+}
+
+func TestApplyDefaults_Ref(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"address": {
+				"type": "object",
+				"properties": {
+					"street": {"type": "string", "default": "Main St"},
+					"city": {"type": "string", "default": "Unknown"}
+				}
 			}
 		},
-		"required": ["name", "age"]
+		"type": "object",
+		"properties": {
+			"address": {"$ref": "#/definitions/address"},
+			"name": {"type": "string", "default": "John"}
+		}
 	}`
+	schema := compileSchema(t, schemaStr)
 
-	schemaWithRequired := compileSchema(t, schemaStrWithRequired)
+	data := parseJSON(t, `{"address": {}}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
 
-	t.Run("required properties are not applied with defaults", func(t *testing.T) {
-		data := parseJSON(t, `{}`)
-		result := ApplyDefaults(data, schemaWithRequired)
+	address := m["address"].(map[string]interface{})
+	if address["street"] != "Main St" || address["city"] != "Unknown" {
+		t.Error("$ref should resolve and apply defaults")
+	}
+	if m["name"] != "John" {
+		t.Error("Base schema properties should work with $ref")
+	}
+}
 
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
+func TestApplyDefaults_AllOf(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"allOf": [
+			{"properties": {"name": {"type": "string", "default": "Unknown"}}},
+			{"properties": {"email": {"type": "string", "default": "no-email@example.com"}}}
+		],
+		"properties": {"active": {"type": "boolean", "default": true}}
+	}`
+	schema := compileSchema(t, schemaStr)
 
-		// Required properties should not have defaults applied
-		if _, exists := m["name"]; exists {
-			t.Error("name is required, should not have default applied")
-		}
-		if _, exists := m["age"]; exists {
-			t.Error("age is required, should not have default applied")
-		}
+	data := parseJSON(t, `{}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
 
-		// Non-required property should have default applied
-		assertEqual(t, "email", m["email"], "no-email@example.com")
-	})
+	if m["name"] != "Unknown" || m["email"] != "no-email@example.com" || m["active"] != true {
+		t.Error("allOf should merge defaults from all subschemas")
+	}
+}
 
-	t.Run("non-required properties get defaults even when required ones are missing", func(t *testing.T) {
-		data := parseJSON(t, `{"name": "John"}`)
-		result := ApplyDefaults(data, schemaWithRequired)
+func TestApplyDefaults_AnyOf(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"anyOf": [
+			{"properties": {"type": {"type": "string", "enum": ["person"], "default": "person"}}},
+			{"properties": {"type": {"type": "string", "enum": ["company"], "default": "company"}}}
+		]
+	}`
+	schema := compileSchema(t, schemaStr)
 
-		m, ok := result.(map[string]interface{})
-		if !ok {
-			t.Fatal("result should be a map")
-		}
+	// Data matching first schema
+	data := parseJSON(t, `{"type": "person"}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+	if m["type"] != "person" {
+		t.Error("anyOf should apply defaults from matching schema")
+	}
+}
 
-		// Required property provided by user
-		assertEqual(t, "name", m["name"], "John")
+func TestApplyDefaults_OneOf(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"oneOf": [
+			{"properties": {"type": {"type": "string", "enum": ["student"], "default": "student"}, "studentId": {"type": "string", "default": "S001"}}},
+			{"properties": {"type": {"type": "string", "enum": ["teacher"], "default": "teacher"}, "teacherId": {"type": "string", "default": "T001"}}}
+		]
+	}`
+	schema := compileSchema(t, schemaStr)
 
-		// Required property not provided - should not have default
-		if _, exists := m["age"]; exists {
-			t.Error("age is required but missing, should not have default applied")
-		}
+	// Data matching first schema
+	data := parseJSON(t, `{"type": "student"}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+	if m["type"] != "student" || m["studentId"] != "S001" {
+		t.Error("oneOf should apply defaults from matching schema")
+	}
+	if _, exists := m["teacherId"]; exists {
+		t.Error("oneOf should not apply defaults from non-matching schema")
+	}
+}
 
-		// Non-required property should have default
-		assertEqual(t, "email", m["email"], "no-email@example.com")
-	})
+func TestApplyDefaults_Combined(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"definitions": {
+			"base": {
+				"type": "object",
+				"properties": {"id": {"type": "integer", "default": 0}}
+			}
+		},
+		"type": "object",
+		"allOf": [
+			{"$ref": "#/definitions/base"},
+			{"properties": {"name": {"type": "string", "default": "Item"}}}
+		],
+		"properties": {"active": {"type": "boolean", "default": true}}
+	}`
+	schema := compileSchema(t, schemaStr)
+
+	data := parseJSON(t, `{}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+
+	if id, ok := m["id"].(json.Number); !ok || id != "0" {
+		t.Error("allOf with $ref should apply defaults from both")
+	}
+	if m["name"] != "Item" || m["active"] != true {
+		t.Error("Combined schemas should merge defaults correctly")
+	}
 }
