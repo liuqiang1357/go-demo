@@ -91,6 +91,52 @@ func TestApplyDefaults_Basic(t *testing.T) {
 	}
 }
 
+func TestApplyDefaults_TupleItems(t *testing.T) {
+	schemaStr := `{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {
+			"tuple": {
+				"type": "array",
+				"items": [
+					{
+						"type": "object",
+						"properties": {
+							"a": {"type": "string", "default": "A"}
+						}
+					},
+					{
+						"type": "object",
+						"properties": {
+							"b": {"type": "string", "default": "B"}
+						}
+					}
+				]
+			}
+		}
+	}`
+	schema := compileSchema(t, schemaStr)
+
+	// First element uses first item schema, second and later use last schema
+	data := parseJSON(t, `{"tuple": [{}, {}, {}]}`)
+	result := ApplyDefaults(data, schema)
+	m := result.(map[string]interface{})
+	tuple := m["tuple"].([]interface{})
+
+	first := tuple[0].(map[string]interface{})
+	if first["a"] != "A" {
+		t.Errorf("First tuple element should get default a=A, got %#v", first)
+	}
+	second := tuple[1].(map[string]interface{})
+	if second["b"] != "B" {
+		t.Errorf("Second tuple element should get default b=B, got %#v", second)
+	}
+	third := tuple[2].(map[string]interface{})
+	if third["b"] != "B" {
+		t.Errorf("Third tuple element should reuse last item schema and get b=B, got %#v", third)
+	}
+}
+
 func TestApplyDefaults_RequiredProperties(t *testing.T) {
 	schemaStr := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
