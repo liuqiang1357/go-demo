@@ -80,8 +80,8 @@ go-demo/
 │   │   ├── template.go          # Package documentation
 │   │   └── template_test.go     # Pongo2 template tests
 │   └── jsonschema/
-│       ├── validator.go         # Package documentation
-│       └── validator_test.go    # JSON Schema validation tests
+│       ├── schema.go            # Package documentation
+│       └── schema_test.go       # JSON Schema validation tests
 └── README.md                    # This file
 ```
 
